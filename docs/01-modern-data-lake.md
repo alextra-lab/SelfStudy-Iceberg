@@ -96,6 +96,26 @@ well-known problems:
   real column; so does Iceberg, through *hidden partitioning*, module 2.)
 - Changing the scheme (month → day) means rewriting the whole table.
 - Engines discover the table by **listing directories**, which is slow on S3.
+- The schema lives in **directory names**. A typo or a renamed folder silently
+  changes your data.
+
+### Why the `=` in `month=2025-12`?
+
+Normally you avoid special characters in names, and that rule still holds for
+everything you name yourself (tables, columns, buckets, files). The `=` here is a
+deliberate convention: the name carries data. With `hive_partitioning = true` the
+engine parses `key=value` out of each path to rebuild the `month` column and prune
+on it. Name the folder plain `2025-12` and DuckDB, Trino and Spark no longer know
+which column that value belongs to.
+
+Iceberg keeps the `key=value` folder names by default, but only so humans can read
+them. Readers never parse the paths, because partition values are stored in the
+manifests. You could flatten or rename the folders and Iceberg would not notice. The
+`write.object-storage.enabled` table property goes further and puts hashed prefixes in
+front of the paths to spread load across S3 partitions (module 4).
+
+Rule of thumb: plain names for anything you type, and treat `key=value` paths as
+tool-generated layout you never type by hand.
 
 ## 5. Layer 3: why a table format exists
 
