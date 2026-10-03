@@ -1,0 +1,19 @@
+[project]
+name = "selfstudy-iceberg"
+version = "0.1.0"
+description = "Hands-on self-study of Apache Iceberg with DuckDB and Starburst/Trino"
+requires-python = ">=3.13"
+dependencies = [
+    "duckdb>=1.5",
+    "pyarrow>=21",
+    "pyiceberg[pyarrow,sql-sqlite]>=0.12",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

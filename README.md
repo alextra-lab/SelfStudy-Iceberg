@@ -1,29 +1,37 @@
 # SelfStudy-Iceberg
 
 Hands-on self-study of **Apache Iceberg**, queried through **Starburst (Trino)** and **DuckDB**.
+No Hadoop: object storage (local folder, then MinIO), SQL or REST catalogs, Python >= 3.13.
 
-The goal is to learn Iceberg by doing it: create tables, evolve them, time travel through snapshots, and read the same data from more than one engine.
+## Course
 
-## Topics
+See [docs/00-course-plan.md](docs/00-course-plan.md) for the full plan.
 
-- Iceberg fundamentals: metadata files, manifests, snapshots, catalogs
-- Creating and loading tables with Starburst / Trino
-- Reading Iceberg tables from DuckDB (`iceberg` extension)
-- Schema and partition evolution
-- Time travel and snapshot management
-- Table maintenance: compaction, expiring snapshots, orphan file cleanup
+| # | Module | Lesson | Lab |
+|---|--------|--------|-----|
+| 1 | Modern data lake basics | [docs/01-modern-data-lake.md](docs/01-modern-data-lake.md) | `labs/01_data_lake/lab.py` |
+| 2 | Iceberg basics | coming | |
+| 3 | Catalog selection | coming | |
+| 4 | Best-practice table creation | coming | |
+| 5 | Best-practice queries | coming | |
+| 6 | Maintenance | coming | |
+| 7 | Development and CI | coming | |
+| 8 | Format comparison (Delta, Hudi, Paimon, DuckLake, XTable) | [reference](docs/08-format-comparison.md) | |
+
+## Quick start
+
+```bash
+uv python install 3.13
+uv sync
+uv run python labs/01_data_lake/lab.py
+uv run pytest
+```
 
 ## Layout
 
-Folders will be added as the work progresses, for example:
-
 ```
-docs/        notes and write-ups
-labs/        step-by-step exercises
-sql/         Trino and DuckDB queries
-data/        small sample datasets (large files stay out of git)
+docs/     lessons
+labs/     runnable exercises, one folder per module
+tests/    smoke tests that keep every lab runnable
+lake/     local data written by the labs (git-ignored)
 ```
-
-## Status
-
-Just getting started.
