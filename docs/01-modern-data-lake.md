@@ -190,9 +190,10 @@ Step 5 damages only a copy of the lake, so the exercises always see clean data.
 1. In step 4a, filter on `order_ts BETWEEN '2025-03-01' AND '2025-03-31'` instead of
    `month = '2025-03'`. How many files are scanned now? Why? (This is the problem
    hidden partitioning solves.)
-2. Write the file sorted by `amount` (change `sort_by` in the exercise cell) and
-   redo 4b. What happens to `amount < 1`, and to `order_id < 100000`? What does
-   that tell you about choosing a sort order?
+2. Rewrite the step 2 file with one change, `ORDER BY amount`, and run the exact
+   step 4b check on it. The notebook shows both results side by side for
+   `order_id < 100000` and `amount < 1`. Which filter can skip row groups now, and
+   what does that tell you about choosing a sort order?
 3. Drag the `ROW_GROUP_SIZE` slider from 10,000 to 1,000,000. How do file size and
    skipping change? Which Exadata trade-off does this remind you of?
 4. Explain in two sentences, in Oracle terms, what the reader in step 5b was missing.
