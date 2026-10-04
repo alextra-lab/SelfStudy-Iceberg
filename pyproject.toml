@@ -7,7 +7,7 @@ dependencies = [
     "duckdb>=1.5",
     "marimo[sql]>=0.25",
     "pyarrow>=21",
-    "pyiceberg[pyarrow,sql-sqlite]>=0.12",
+    "pyiceberg[pyarrow,sql-sqlite,pyiceberg-core]>=0.12",
 ]
 
 [dependency-groups]

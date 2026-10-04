@@ -10,7 +10,7 @@ See [docs/00-course-plan.md](docs/00-course-plan.md) for the full plan.
 | # | Module | Lesson | Lab |
 |---|--------|--------|-----|
 | 1 | Modern data lake basics | [docs/01-modern-data-lake.md](docs/01-modern-data-lake.md) | `labs/01_data_lake/lab.py` |
-| 2 | Iceberg basics | coming | |
+| 2 | Iceberg basics | [docs/02-iceberg-basics.md](docs/02-iceberg-basics.md) | `labs/02_iceberg_basics/lab.py` |
 | 3 | Catalog selection | coming | |
 | 4 | Best-practice table creation | coming | |
 | 5 | Best-practice queries | coming | |
