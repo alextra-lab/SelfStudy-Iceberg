@@ -23,7 +23,7 @@ See [docs/00-course-plan.md](docs/00-course-plan.md) for the full plan.
 ```bash
 uv python install 3.13
 uv sync
-uv run python labs/01_data_lake/lab.py
+uv run marimo edit labs/01_data_lake/lab.py   # labs are marimo notebooks
 uv run pytest
 ```
 
@@ -31,7 +31,7 @@ uv run pytest
 
 ```
 docs/     lessons
-labs/     runnable exercises, one folder per module
+labs/     marimo notebooks (plain .py), one folder per module
 tests/    smoke tests that keep every lab runnable
 lake/     local data written by the labs (git-ignored)
 ```

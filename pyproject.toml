@@ -5,6 +5,7 @@ description = "Hands-on self-study of Apache Iceberg with DuckDB and Starburst/T
 requires-python = ">=3.13"
 dependencies = [
     "duckdb>=1.5",
+    "marimo[sql]>=0.25",
     "pyarrow>=21",
     "pyiceberg[pyarrow,sql-sqlite]>=0.12",
 ]
