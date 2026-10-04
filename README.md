@@ -16,7 +16,8 @@ See [docs/00-course-plan.md](docs/00-course-plan.md) for the full plan.
 | 5 | Best-practice queries | coming | |
 | 6 | Maintenance | coming | |
 | 7 | Development and CI | coming | |
-| 8 | Format comparison (Delta, Hudi, Paimon, DuckLake, XTable) | [reference](docs/08-format-comparison.md) | |
+| 8 | Format and engine comparison (Delta, Hudi, Paimon, DuckLake, XTable; DuckDB, chDB, Trino, Spark) | [reference](docs/08-format-comparison.md) | |
+| 9 | chDB (embedded ClickHouse) | coming | |
 
 ## Quick start
 

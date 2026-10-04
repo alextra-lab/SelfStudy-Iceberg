@@ -1,6 +1,6 @@
 # Course plan
 
-Eight modules, each with a lesson in `docs/` and a runnable lab in `labs/`.
+Nine modules, each with a lesson in `docs/` and a runnable lab in `labs/`.
 Everything runs on Python >= 3.13 with `uv`. No Hadoop, no HDFS, no Hive Metastore:
 storage is a local folder first, then MinIO (S3-compatible) in Docker; catalogs are
 SQLite/Postgres-backed or REST.
@@ -14,7 +14,8 @@ SQLite/Postgres-backed or REST.
 | 5 | Best-practice queries | Write queries that prune partitions and files, use metadata tables, avoid small-file and delete-file traps | Trino/Starburst, DuckDB |
 | 6 | Maintenance | Run compaction, expire snapshots, remove orphan files, rewrite manifests; schedule them | Trino `ALTER TABLE ... EXECUTE`, PyIceberg |
 | 7 | Development and CI | Test pipelines locally, use branches/tags and write-audit-publish, run Iceberg tests in GitHub Actions | pytest, GitHub Actions, Nessie or Iceberg branches |
-| 8 | Format comparison | Place Iceberg against Delta Lake, Hudi, Paimon, DuckLake, and know what XTable does | Reading + small DuckLake lab |
+| 8 | Format and engine comparison | Place Iceberg against Delta Lake, Hudi, Paimon, DuckLake, and know what XTable does; compare the engines that read Iceberg (DuckDB, chDB, Trino/Starburst, Spark) | Reading + small DuckLake lab |
+| 9 | chDB (embedded ClickHouse) | Query Iceberg tables from chDB, time travel with it, and know when ClickHouse's own MergeTree storage beats an open table format | chDB, PyIceberg |
 
 ## How each module works
 
