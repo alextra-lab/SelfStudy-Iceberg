@@ -78,6 +78,59 @@ works if the data is clustered on the column you filter on.** In the lab, `order
 is sorted so a filter skips 16 of 17 row groups; `amount` is random so nothing is
 skipped. That is why Iceberg tables have a **sort order** (module 4).
 
+Oracle has exactly this pairing: **attribute clustering** (`CLUSTERING BY LINEAR ORDER`)
+plus **zone maps**. A zone map only prunes if rows were loaded clustered on the
+column you filter by. And you can only sort one way at a time: in exercise 2,
+re-sorting by `amount` makes `amount < 1` read 1 of 17 row groups, but `order_id <
+100000` drops to 17 of 17. Choose the sort order from your most common `WHERE`
+clauses. (Iceberg also offers z-ordering, which clusters on several columns at
+once at some cost to each one. Module 4.)
+
+### Row group size: the HCC trade-off
+
+A row group is a horizontal slice of rows, stored column by column inside, with
+one min/max per column. The closest Exadata match is an **HCC compression unit**,
+and its min/max plays the role of a storage index region. Choosing the size is
+the same trade-off as HCC **Query Low** vs **Archive High**: bigger units compress
+better but cost more work per lookup.
+
+Exercise 3 on the lab's 2M rows, filtering `order_id < 100000`:
+
+| Row group size | Row groups | File size | Row groups read | Rows read to find 100,000 |
+|---|---|---|---|---|
+| 10,000 | 196 | 21.6 MB | 10 | 100,000 |
+| 50,000 | 40 | 21.5 MB | 2 | 100,000 |
+| 122,880 (DuckDB default) | 17 | 21.4 MB | 1 | 122,880 |
+| 500,000 | 4 | 20.8 MB | 1 | 500,000 |
+| 1,000,000 | 2 | 19.4 MB | 1 | 1,000,000 |
+
+- **Bigger row groups:** better compression, less footer metadata, fewer and
+  larger reads. But skipping gets coarse: at 1,000,000 the engine reads 10 times
+  more rows than it needs.
+- **Smaller row groups:** precise skipping, but more metadata, more small reads,
+  and slightly worse compression. On object storage, where every request has a
+  cost and latency, too many small reads hurts.
+
+This choice has a big impact on query performance, so it gets a full deep dive
+with measured query timings in module 4.
+
+**In Iceberg it is set per table**, as table properties stored in the table's
+metadata, so every writer sees the same settings:
+
+| Property | Default | Controls |
+|---|---|---|
+| `write.parquet.row-group-size-bytes` | 128 MB | Row group size |
+| `write.target-file-size-bytes` | 512 MB | Data file size |
+| `write.parquet.compression-codec` | zstd | Compression |
+
+You set them in `CREATE TABLE` or change them with `ALTER TABLE ... SET PROPERTIES`.
+As with HCC, a change applies only to **new writes**. Existing files keep their
+layout until compaction rewrites them, just as `ALTER TABLE ... COMPRESS FOR` needs
+an `ALTER TABLE ... MOVE` to recompress old data. One caveat: honoring the
+properties is up to the engine doing the writing. Spark and PyIceberg follow
+them, and Trino has some writer settings of its own. Module 4 tests which ones it
+obeys.
+
 ## 4. Partitioning, the old way (Hive-style)
 
 The classic data lake trick is one directory per partition value:
@@ -140,6 +193,31 @@ say exactly which data files make up the table at each point in time:
 | Schema | Schema with column IDs in metadata; rename/add/drop safe | Data dictionary |
 | Pruning without listing | Partition values and column min/max stored in manifests | Partition pruning + storage indexes, but planned before any data file is opened |
 
+### Read consistency: SCNs and snapshots
+
+The rule the step 5b reader broke is the one every RDBMS enforces: **a query must
+never see into an operation that is still running. It sees only what was committed
+as of the moment the query started.** A commit that lands while the query is
+still running is invisible to it too.
+
+Oracle enforces this with the **SCN (System Change Number)**, its internal logical
+clock, a counter that increases with every commit. When a query starts, Oracle notes
+the current SCN, and every block is read as of that SCN. If a block has changed
+since, Oracle uses undo to rebuild the older version. Flashback query
+(`SELECT ... AS OF SCN n`) is the same mechanism pointed at the past.
+
+Iceberg's equivalent is the **snapshot**. Every commit creates a new snapshot with
+its own ID. A reader pins one snapshot when it plans the query and reads only that
+snapshot's files, so a writer adding and removing files mid-query changes nothing
+for it. `FOR VERSION AS OF <snapshot_id>` is Iceberg's flashback query (module 2).
+
+| Oracle | Iceberg |
+|---|---|
+| SCN | Snapshot ID |
+| COMMIT | Atomic swap of the catalog's metadata pointer |
+| Undo for consistent reads | Old data files kept until their snapshots are expired |
+| `AS OF SCN` / `AS OF TIMESTAMP` | `FOR VERSION AS OF` / `FOR TIMESTAMP AS OF` |
+
 ## 6. Layer 4: the catalog
 
 The table format needs one place that says "the current metadata file for
@@ -197,6 +275,19 @@ Step 5 damages only a copy of the lake, so the exercises always see clean data.
 3. Drag the `ROW_GROUP_SIZE` slider from 10,000 to 1,000,000. How do file size and
    skipping change? Which Exadata trade-off does this remind you of?
 4. Explain in two sentences, in Oracle terms, what the reader in step 5b was missing.
+
+## 10. Exercise answers
+
+1. **12 of 12 files.** `month` exists only in folder names, so the engine cannot tell
+   that March `order_ts` values live in `month=2025-03` and must open every file.
+   Iceberg's hidden partitioning fixes this (module 2).
+2. **Sorting moves the benefit.** Sorted by `amount`, `amount < 1` reads 1 of 17 row
+   groups and `order_id < 100000` reads 17 of 17, the reverse of step 4b. See
+   attribute clustering and zone maps in section 3.
+3. **It is the HCC compression unit trade-off.** See "Row group size" in section 3.
+4. **Read consistency and an atomic commit.** The reader had no SCN to pin and the
+   writer had no commit, so the reader saw half old files and half new ones. See
+   "Read consistency" in section 5.
 
 Next: module 2 builds the same table as Iceberg and opens the metadata files to
 see exactly how it fixes step 5.
