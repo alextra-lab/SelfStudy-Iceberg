@@ -162,9 +162,13 @@ Because layers 1 to 4 are open, you pick engines per job:
 
 ## 8. Run the lab
 
+The lab is a [marimo](https://marimo.io) notebook: a reactive notebook saved as a
+plain `.py` file. Edit a cell and everything that depends on it reruns.
+
 ```bash
 uv sync
-uv run python labs/01_data_lake/lab.py
+uv run marimo edit labs/01_data_lake/lab.py   # opens the notebook in your browser
+uv run python labs/01_data_lake/lab.py        # or run it headless as a script
 ```
 
 What you should see (numbers from a reference run):
@@ -180,13 +184,16 @@ What you should see (numbers from a reference run):
 
 ## 9. Exercises
 
+Each exercise has a ready-made cell at the bottom of the notebook. Edit it there.
+Step 5 damages only a copy of the lake, so the exercises always see clean data.
+
 1. In step 4a, filter on `order_ts BETWEEN '2025-03-01' AND '2025-03-31'` instead of
    `month = '2025-03'`. How many files are scanned now? Why? (This is the problem
    hidden partitioning solves.)
-2. Write `orders.parquet` sorted by `amount` (`COPY (SELECT * FROM orders ORDER BY amount) ...`)
-   and redo 4b. What happens to `amount < 1`, and to `order_id < 100000`? What does
+2. Write the file sorted by `amount` (change `sort_by` in the exercise cell) and
+   redo 4b. What happens to `amount < 1`, and to `order_id < 100000`? What does
    that tell you about choosing a sort order?
-3. Set `ROW_GROUP_SIZE` to 10,000 and then to 1,000,000. How do file size and
+3. Drag the `ROW_GROUP_SIZE` slider from 10,000 to 1,000,000. How do file size and
    skipping change? Which Exadata trade-off does this remind you of?
 4. Explain in two sentences, in Oracle terms, what the reader in step 5b was missing.
 

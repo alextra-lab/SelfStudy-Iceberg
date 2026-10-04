@@ -19,8 +19,10 @@ SQLite/Postgres-backed or REST.
 ## How each module works
 
 1. Read `docs/NN-*.md` (concepts, mapped to Exadata and Elasticsearch where useful).
-2. Run `uv run python labs/NN_*/lab.py` and read the output against the lesson.
-3. Do the exercises at the end of the lesson.
+2. Open the lab notebook with `uv run marimo edit labs/NN_*/lab.py` and work through it
+   alongside the lesson. Labs are [marimo](https://marimo.io) notebooks: reactive, stored
+   as plain `.py` files, and also runnable as scripts.
+3. Do the exercises in the cells at the bottom of the notebook.
 4. `uv run pytest` keeps every lab runnable, which is also the seed of module 7.
 
 ## Setup (once)
@@ -28,8 +30,8 @@ SQLite/Postgres-backed or REST.
 ```bash
 # install uv: https://docs.astral.sh/uv/
 uv python install 3.13
-uv sync                      # creates .venv with duckdb, pyarrow, pyiceberg, pytest
-uv run python labs/01_data_lake/lab.py
+uv sync                      # creates .venv with duckdb, pyarrow, pyiceberg, marimo, pytest
+uv run marimo edit labs/01_data_lake/lab.py
 uv run pytest
 ```
 
