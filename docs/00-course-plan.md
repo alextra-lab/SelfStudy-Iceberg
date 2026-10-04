@@ -8,7 +8,7 @@ SQLite/Postgres-backed or REST.
 | # | Module | You will be able to | Stack |
 |---|--------|---------------------|-------|
 | 1 | Modern data lake basics | Explain object storage + open file formats + table formats + catalogs + engines, and why plain Parquet is not a table | DuckDB, Parquet |
-| 2 | Iceberg basics | Read an Iceberg table's metadata tree (metadata.json, manifest list, manifests, data files), take snapshots, time travel, evolve schema | PyIceberg (SQLite catalog), DuckDB `iceberg` extension |
+| 2 | Iceberg basics | Read an Iceberg table's metadata tree (metadata.json, manifest list, manifests, data files), take snapshots, time travel, evolve schema | PyIceberg (SQLite catalog), DuckDB |
 | 3 | Catalog selection | Choose between REST catalogs (Polaris, Lakekeeper, Nessie, Gravitino, Unity), cloud catalogs (Glue, S3 Tables) and JDBC/SQL; know why Hive Metastore is legacy | Docker: MinIO + a REST catalog + Trino |
 | 4 | Best-practice table creation | Pick partition transforms, sort order, target file size, format version (v2 vs v3) and table properties for a workload | Trino/Starburst, PyIceberg |
 | 5 | Best-practice queries | Write queries that prune partitions and files, use metadata tables, avoid small-file and delete-file traps | Trino/Starburst, DuckDB |
