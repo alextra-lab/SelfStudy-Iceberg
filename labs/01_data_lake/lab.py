@@ -94,6 +94,35 @@ def _(con, mo, orders_ready):
 
 
 @app.cell
+def _(con):
+    PARQUET_OPTIONS = "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)"
+
+    # The two filters used in step 4b, exercise 2 and exercise 3.
+    PREDICATES = {"order_id < 100000": "order_id", "amount < 1": "amount"}
+    _LIMITS = {"order_id": 100000, "amount": 1}
+
+
+    def row_groups_must_read(path) -> tuple[dict, int]:
+        """For each predicate, count the row groups whose [min, max] could match it.
+
+        A row group whose minimum is already >= the limit cannot hold a matching row,
+        so the engine skips it without reading it.
+        """
+        total = con.sql(f"SELECT count(DISTINCT row_group_id) FROM parquet_metadata('{path}')").fetchone()[0]
+        counts = {
+            label: con.sql(f"""
+                SELECT count(*) FROM parquet_metadata('{path}')
+                WHERE path_in_schema = '{col}'
+                  AND TRY_CAST(stats_min AS DOUBLE) < {_LIMITS[col]}
+            """).fetchone()[0]
+            for label, col in PREDICATES.items()
+        }
+        return counts, total
+
+    return PARQUET_OPTIONS, row_groups_must_read
+
+
+@app.cell
 def _(mo):
     mo.md(r"""
     ## Step 2: same data as CSV vs Parquet (row store vs column store on disk)
@@ -102,12 +131,12 @@ def _(mo):
 
 
 @app.cell
-def _(LAKE, con, du, mb, mo, orders_ready):
+def _(LAKE, PARQUET_OPTIONS, con, du, mb, mo, orders_ready):
     _ = orders_ready
     csv_path = LAKE / "orders.csv"
     pq = LAKE / "orders.parquet"
     con.execute(f"COPY orders TO '{csv_path}' (HEADER)")
-    con.execute(f"COPY orders TO '{pq}' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)")
+    con.execute(f"COPY (SELECT * FROM orders) TO '{pq}' {PARQUET_OPTIONS}")
     csv_bytes, pq_bytes = du(csv_path), du(pq)
     mo.md(f"""
     | File | Size |
@@ -200,26 +229,14 @@ def _(mo):
 
 
 @app.cell
-def _(con, mo, pq):
-    _stats = f"""
-        SELECT row_group_id,
-               max(TRY_CAST(stats_min AS DOUBLE)) FILTER (WHERE path_in_schema = 'order_id') AS id_min,
-               max(TRY_CAST(stats_min AS DOUBLE)) FILTER (WHERE path_in_schema = 'amount')   AS amt_min
-        FROM parquet_metadata('{pq}') GROUP BY row_group_id
-    """
-    _total = con.sql(f"SELECT count(*) FROM ({_stats})").fetchone()[0]
-    row_groups_read = {
-        _label: con.sql(f"SELECT count(*) FROM ({_stats}) WHERE {_could_match}").fetchone()[0]
-        for _label, _could_match in [
-            ("order_id < 100000", "id_min < 100000"),
-            ("amount < 1", "amt_min < 1"),
-        ]
-    }
+def _(mo, pq, row_groups_must_read):
+    row_groups_read, _total = row_groups_must_read(pq)
     mo.md(
         "| Predicate | Row groups that must be read |\n|---|---|\n"
         + "\n".join(f"| `{_k}` | {_v} of {_total} |" for _k, _v in row_groups_read.items())
-        + "\n\n`order_id` is sorted, so each row group covers a narrow range and most are"
-        " skipped. `amount` is random, so every row group spans 0 to 999 and none can be skipped."
+        + "\n\nThe file was written in `order_id` order, so each row group covers a narrow"
+        " range of `order_id` and most are skipped. `amount` is random, so every row group"
+        " spans 0 to 999 and none can be skipped."
     )
     return (row_groups_read,)
 
@@ -324,38 +341,38 @@ def _(by_month, con, mo):
 @app.cell
 def _(mo):
     mo.md(r"""
-    **Exercise 2.** Write the file sorted by a different column and look at row group
-    skipping again. Try `amount`, then `region, order_ts`. What happens to
-    `amount < 1`, and to `order_id < 100000`? What does that say about choosing a sort order?
+    **Exercise 2. Does sorting change which filter can skip?** This writes the same
+    file as step 2 with exactly one change, an `ORDER BY`, then runs the step 4b check
+    on both files:
+
+    ```sql
+    -- step 2:     COPY (SELECT * FROM orders)                 TO 'orders.parquet'        (...)
+    -- exercise 2: COPY (SELECT * FROM orders ORDER BY amount) TO 'orders_sorted.parquet' (...)
+    ```
+
+    Compare the two columns of the table. Then change `sort_by` to `order_id` and
+    look again. What does that tell you about choosing a sort order?
     """)
     return
 
 
 @app.cell
-def _(LAKE, con, mo, orders_ready):
+def _(LAKE, PARQUET_OPTIONS, con, mo, orders_ready, pq, row_groups_must_read):
     _ = orders_ready
     sort_by = "amount"  # edit me
     sorted_pq = LAKE / "orders_sorted.parquet"
-    con.execute(
-        f"COPY (SELECT * FROM orders ORDER BY {sort_by}) TO '{sorted_pq}' "
-        "(FORMAT parquet, ROW_GROUP_SIZE 122880)"
-    )
-    _df = mo.sql(
-        f"""
-        WITH s AS (
-            SELECT row_group_id,
-                   max(TRY_CAST(stats_min AS DOUBLE)) FILTER (WHERE path_in_schema = 'order_id') AS id_min,
-                   max(TRY_CAST(stats_min AS DOUBLE)) FILTER (WHERE path_in_schema = 'amount')   AS amt_min
-            FROM parquet_metadata('{sorted_pq}') GROUP BY row_group_id
+    con.execute(f"COPY (SELECT * FROM orders ORDER BY {sort_by}) TO '{sorted_pq}' {PARQUET_OPTIONS}")
+
+    _before, _total = row_groups_must_read(pq)
+    sorted_read, _ = row_groups_must_read(sorted_pq)
+    mo.md(
+        f"| Predicate | Step 4b: no ORDER BY | Exercise 2: ORDER BY {sort_by} |\n|---|---|---|\n"
+        + "\n".join(
+            f"| `{_k}` | {_before[_k]} of {_total} | {sorted_read[_k]} of {_total} |" for _k in _before
         )
-        SELECT count(*)                                AS row_groups,
-               count(*) FILTER (WHERE id_min < 100000) AS read_for_order_id_lt_100000,
-               count(*) FILTER (WHERE amt_min < 1)     AS read_for_amount_lt_1
-        FROM s
-        """,
-        engine=con,
+        + "\n\n(Row groups that must be read. Lower is better.)"
     )
-    return
+    return (sorted_read,)
 
 
 @app.cell
@@ -377,20 +394,21 @@ def _(mo):
 
 
 @app.cell
-def _(LAKE, con, du, mb, mo, orders_ready, row_group_size):
+def _(LAKE, con, du, mb, mo, orders_ready, row_group_size, row_groups_must_read):
     _ = orders_ready
     _path = LAKE / "orders_rg.parquet"
+    _size = row_group_size.value
     con.execute(
-        f"COPY orders TO '{_path}' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE {row_group_size.value})"
+        f"COPY (SELECT * FROM orders) TO '{_path}' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE {_size})"
     )
-    _groups, _read = con.sql(f"""
-        SELECT count(*), count(*) FILTER (WHERE TRY_CAST(stats_min AS DOUBLE) < 100000)
-        FROM parquet_metadata('{_path}') WHERE path_in_schema = 'order_id'
-    """).fetchone()
+    _read, _total = row_groups_must_read(_path)
+    _n = _read["order_id < 100000"]
     mo.md(f"""
-    | ROW_GROUP_SIZE | File size | Row groups | Read for `order_id < 100000` |
-    |---|---|---|---|
-    | {row_group_size.value:,} | {mb(du(_path))} | {_groups} | {_read} |
+    Same COPY as step 2, with only `ROW_GROUP_SIZE` changed.
+
+    | ROW_GROUP_SIZE | File size | Row groups | `order_id < 100000`: row groups read | Rows read (to find 100,000) |
+    |---|---|---|---|---|
+    | {_size:,} | {mb(du(_path))} | {_total} | {_n} | about {min(_n * _size, 2_000_000):,} |
     """)
     return
 

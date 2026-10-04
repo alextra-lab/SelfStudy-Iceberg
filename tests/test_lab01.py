@@ -20,6 +20,7 @@ def test_lab01_runs():
     assert "Scanning Files: 1/12" in defs["pruning_lines"]
     assert defs["row_groups_read"]["order_id < 100000"] == 1
     assert defs["row_groups_read"]["amount < 1"] == 17
+    assert defs["sorted_read"] == {"order_id < 100000": 17, "amount < 1": 1}
     assert defs["rows_before"] == defs["rows_after"] == 2_000_000
     assert defs["rows_during"] > defs["rows_before"]
     assert defs["pq_bytes"] < defs["csv_bytes"]
