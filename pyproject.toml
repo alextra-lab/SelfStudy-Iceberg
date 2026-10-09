@@ -9,6 +9,8 @@ dependencies = [
     "marimo[sql]>=0.25",
     "pyarrow>=21",
     "pyiceberg[pyarrow,sql-sqlite,pyiceberg-core]>=0.12",
+    "requests>=2.32",
+    "trino[sqlalchemy]>=0.336",
 ]
 
 [dependency-groups]
