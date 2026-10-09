@@ -11,7 +11,6 @@ def _():
     from datetime import datetime, timezone
     from pathlib import Path
 
-    import chdb
 
     import duckdb
     import marimo as mo
@@ -35,7 +34,6 @@ def _():
         SqlCatalog,
         StringType,
         TimestampType,
-        chdb,
         datetime,
         duckdb,
         mo,
@@ -549,7 +547,7 @@ def _(mo):
 
 
 @app.cell
-def _(WAREHOUSE, chdb, mo, status_at_tag, time_before_write):
+def _(WAREHOUSE, mo, status_at_tag, time_before_write):
     _ = status_at_tag
     _table_dir = WAREHOUSE / "sales" / "orders"
     _ms = int(time_before_write.timestamp() * 1000)
@@ -559,7 +557,13 @@ def _(WAREHOUSE, chdb, mo, status_at_tag, time_before_write):
     WHERE order_id = 400000
     SETTINGS iceberg_timestamp_ms = {_ms}
     """
-    status_sql_at_time = chdb.query(_query, "CSV").data().strip().split(",")[1].strip('"')
+    # Imported here, not at the top, so a broken chDB install skips only this step.
+    try:
+        import chdb
+
+        status_sql_at_time = chdb.query(_query, "CSV").data().strip().split(",")[1].strip('"')
+    except ImportError as _err:
+        status_sql_at_time = f"not run (chDB failed to import: {_err})"
     mo.md(f"""
     ```sql
     {_query}
