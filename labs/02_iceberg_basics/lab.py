@@ -655,11 +655,12 @@ def _(data_files_after, mo, orders):
     _results = {}
     for _row_filter in ["order_id < 100000", "amount < 1"]:  # edit me
         _results[_row_filter] = len(list(orders.scan(row_filter=_row_filter).plan_files()))
+    exercise1_files = _results
+    # marimo shows only a cell's last expression, so the table must come last.
     mo.md(
         "| row_filter | Files planned |\n|---|---|\n"
         + "\n".join(f"| `{_k}` | {_v} of {_total} |" for _k, _v in _results.items())
     )
-    exercise1_files = _results
     return (exercise1_files,)
 
 
