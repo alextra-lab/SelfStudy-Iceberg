@@ -22,6 +22,8 @@ def test_lab02_runs():
     # Time travel shows the value before the write.
     assert defs["status_before"] != "CANCELLED"
     assert defs["status_now"] == "CANCELLED"
+    # Time travel by wall-clock time, by tag, and in SQL (chDB) all reach the same past.
+    assert defs["status_at_time"] == defs["status_at_tag"] == defs["status_sql_at_time"] == defs["status_before"]
     # Manifest min/max prunes files on a non-partition column.
     assert defs["exercise1_files"] == {"order_id < 100000": 1, "amount < 1": 12}
     # Partition evolution: both old and new specs still prune.
