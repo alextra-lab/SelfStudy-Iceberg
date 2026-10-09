@@ -73,6 +73,35 @@ images. In lab step 7 there are 13 data files for 12 months: the March file repl
 in step 5 is still referenced by the first snapshot. Expiring snapshots and deleting
 unreferenced files is maintenance (module 6).
 
+### Is time travel really this manual?
+
+In lab step 6 it looks manual: you hold a snapshot ID and pass it to
+`scan(snapshot_id=...)`. That is mostly the lab's tool, not Iceberg. PyIceberg is a
+library with no SQL layer, so every lookup is a Python call. The format itself
+stores what an engine needs to make it as easy as Oracle Flashback:
+
+| You want | Oracle | Iceberg stores | Engine does it for you |
+|---|---|---|---|
+| The table as of a time | `AS OF TIMESTAMP t` (Oracle maps time to SCN) | A snapshot log with commit times in `metadata.json` | Trino `FOR TIMESTAMP AS OF`, Spark `TIMESTAMP AS OF`, chDB `SETTINGS iceberg_timestamp_ms` |
+| A named point to return to | `CREATE RESTORE POINT before_fix` | **Tags**: a name pinned to a snapshot, with an optional retention | Read with `FOR VERSION AS OF 'before_fix'` (Trino, Spark). Spark creates them in SQL: `ALTER TABLE ... CREATE TAG` |
+| Undo a bad load | `FLASHBACK TABLE ... TO TIMESTAMP t` | Any old snapshot can be made current again | Spark `CALL system.rollback_to_timestamp(...)`, Trino `rollback_to_snapshot`, PyIceberg `manage_snapshots().rollback_to_timestamp(...)` |
+| An isolated copy to test a change | No direct equivalent (closest: a PDB snapshot clone) | **Branches**: a named line of snapshots that `main` readers don't see | Spark `ALTER TABLE ... CREATE BRANCH`, then write to `orders.branch_dev` |
+
+Lab step 6b does the time and tag versions, first in PyIceberg, then in SQL through chDB.
+
+The part that **is** genuinely manual is cleanup. Oracle reuses undo space on its
+own (`UNDO_RETENTION`). Iceberg never deletes anything by itself: old snapshots,
+and the data files only they reference, stay until something runs
+**expire_snapshots** (Spark `CALL system.expire_snapshots`, Trino
+`ALTER TABLE ... EXECUTE expire_snapshots(retention_threshold => '7d')`, PyIceberg
+`maintenance.expire_snapshots()`). Table properties such as
+`history.expire.max-snapshot-age-ms` (default 5 days) and
+`history.expire.min-snapshots-to-keep` (default 1) only tell that job what to keep.
+The closer Oracle analogy is an RMAN retention policy: it describes what to keep,
+but backups are removed only when a scheduled `DELETE OBSOLETE` runs. In
+production you schedule the job, or use a managed catalog that runs it for you.
+Module 3 compares catalogs on this, and module 6 sets up the job.
+
 ## 4. How a commit works
 
 A writer never edits a file. To commit, it:
@@ -193,6 +222,7 @@ What you should see:
 | 4 | Filter on `order_ts` for March plans 1 of 12 files |
 | 5 | Pinned reader and current reader both count 2,000,000. One new metadata file, `00002` |
 | 6 | Order 400000 is `PAID` at the old snapshot and `CANCELLED` now |
+| 6b | The same `PAID` by wall-clock time, by the tag `before_march_fix`, and from chDB SQL |
 | 7 | `add_column` rewrites no data files; existing rows have `channel` = NULL |
 
 The last cell optionally reads the table with DuckDB's own `iceberg` extension. It

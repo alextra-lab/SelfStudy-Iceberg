@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Hands-on self-study of Apache Iceberg with DuckDB and Starburst/Trino"
 requires-python = ">=3.13"
 dependencies = [
+    "chdb>=4.4",
     "duckdb>=1.5",
     "marimo[sql]>=0.25",
     "pyarrow>=21",

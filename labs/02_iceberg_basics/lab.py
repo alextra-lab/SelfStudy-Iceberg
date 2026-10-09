@@ -8,7 +8,10 @@ app = marimo.App(width="medium")
 def _():
     import shutil
     import sqlite3
+    from datetime import datetime, timezone
     from pathlib import Path
+
+    import chdb
 
     import duckdb
     import marimo as mo
@@ -32,10 +35,13 @@ def _():
         SqlCatalog,
         StringType,
         TimestampType,
+        chdb,
+        datetime,
         duckdb,
         mo,
         shutil,
         sqlite3,
+        timezone,
     )
 
 
@@ -52,6 +58,11 @@ def _(mo):
     We build the module 1 `orders` table again, this time as an Iceberg table, and
     replay module 1's failures to see how Iceberg fixes each one. Everything is
     written under `./lake/module02/` (git-ignored) and rebuilt on every run.
+
+    Most steps change the table, and marimo re-runs a cell whenever a cell above it
+    re-runs. Cells that would fail the second time (adding a column, a tag, a
+    partition field) check first and skip. To start over cleanly, re-run step 0: it
+    deletes the lake, and every step after it runs again in order.
 
     Tools: **PyIceberg** writes and reads the table, and **DuckDB** runs SQL over
     what PyIceberg returns.
@@ -126,6 +137,7 @@ def _(
     orders_spec = PartitionSpec(
         PartitionField(source_id=2, field_id=1000, transform=MonthTransform(), name="order_ts_month")
     )
+    mo.stop(catalog.table_exists("sales.orders"), mo.md("This step already ran on the current table. Re-run **step 0** to rebuild the lake from scratch."))
     orders = catalog.create_table("sales.orders", schema=orders_schema, partition_spec=orders_spec)
 
     _files = sorted(str(p.relative_to(WAREHOUSE)) for p in WAREHOUSE.rglob("*") if p.is_file())
@@ -173,6 +185,7 @@ def _(mo):
 
 @app.cell
 def _(WAREHOUSE, duckdb, mo, orders):
+    mo.stop(orders.current_snapshot() is not None, mo.md("This step already ran on the current table. Re-run **step 0** to rebuild the lake from scratch."))
     con = duckdb.connect()
     orders_arrow = con.sql("""
         SELECT
@@ -377,9 +390,10 @@ def _(mo):
 
 
 @app.cell
-def _(WAREHOUSE, con, first_snapshot_id, mo, orders):
+def _(WAREHOUSE, con, datetime, first_snapshot_id, mo, orders, timezone):
+    mo.stop(orders.current_snapshot().snapshot_id != first_snapshot_id, mo.md("This step already ran on the current table. Re-run **step 0** to rebuild the lake from scratch."))
     reader_snapshot_id = orders.current_snapshot().snapshot_id  # the reader pins its "SCN"
-    assert reader_snapshot_id == first_snapshot_id
+    time_before_write = datetime.now(timezone.utc)  # a wall-clock time, used again in step 6b
 
     _march_filter = "order_ts >= '2025-03-01T00:00:00' AND order_ts < '2025-04-01T00:00:00'"
     con.register("march_before", orders.scan(row_filter=_march_filter).to_arrow())
@@ -402,7 +416,7 @@ def _(WAREHOUSE, con, first_snapshot_id, mo, orders):
     one (`00002`), so the table went from the old state to the new one in a single pointer swap.
     There was no moment in between for a reader to see.
     """)
-    return reader_snapshot_id, rows_at_reader_snapshot, rows_now
+    return reader_snapshot_id, rows_at_reader_snapshot, rows_now, time_before_write
 
 
 @app.cell
@@ -459,6 +473,114 @@ def _(mo, orders, reader_snapshot_id, rows_now):
 @app.cell
 def _(mo):
     mo.md(r"""
+    ## Step 6b: travel by time or by name, not by snapshot ID
+
+    Step 6 passed a raw snapshot ID, which is like asking for `AS OF SCN
+    8367255084261766151`. Nobody works that way in Oracle either. You use
+    `AS OF TIMESTAMP` (Oracle maps the time to an SCN for you) or a named **restore
+    point**. Iceberg has both:
+
+    | Oracle | Iceberg |
+    |---|---|
+    | `AS OF TIMESTAMP t` | Find the last snapshot committed at or before `t` (the snapshot log stores commit times) |
+    | `CREATE RESTORE POINT before_fix` | A **tag**: a name pinned to one snapshot, stored in `metadata.json` |
+    | `FLASHBACK TABLE ... TO TIMESTAMP t` | `rollback_to_timestamp(t)`: make an old snapshot current again |
+
+    PyIceberg is a library, so a time lookup is two calls: time to snapshot, then
+    scan. `time_before_write` is the wall-clock time step 5 noted just before the
+    writer committed.
+    """)
+    return
+
+
+@app.cell
+def _(mo, orders, status_now, time_before_write):
+    _ = status_now
+    _ms = int(time_before_write.timestamp() * 1000)
+    _snap = orders.snapshot_as_of_timestamp(_ms)
+    status_at_time = orders.scan(row_filter="order_id = 400000", snapshot_id=_snap.snapshot_id).to_arrow()["status"][0].as_py()
+    mo.md(f"""
+    | Query | status of order 400000 |
+    |---|---|
+    | `orders.snapshot_as_of_timestamp({_ms})` (that is {time_before_write:%Y-%m-%d %H:%M:%S.%f} UTC) | snapshot `{_snap.snapshot_id}` |
+    | `orders.scan(row_filter="order_id = 400000", snapshot_id=<that snapshot>)` | {status_at_time} |
+    """)
+    return (status_at_time,)
+
+
+@app.cell
+def _(con, mo, orders, status_at_time, time_before_write):
+    _ = status_at_time
+    _ms = int(time_before_write.timestamp() * 1000)
+    # Pin a name on the snapshot that was current before the fix, like CREATE RESTORE POINT.
+    # Only once: on a re-run of this cell the tag already exists and creating it again fails.
+    if orders.snapshot_by_name("before_march_fix") is None:
+        orders.manage_snapshots().create_tag(orders.snapshot_as_of_timestamp(_ms).snapshot_id, "before_march_fix").commit()
+    status_at_tag = orders.scan(
+        row_filter="order_id = 400000",
+        snapshot_id=orders.snapshot_by_name("before_march_fix").snapshot_id,
+    ).to_arrow()["status"][0].as_py()
+
+    con.register("refs", orders.inspect.refs())
+    _df = mo.sql(
+        """
+        SELECT name, type, snapshot_id
+        FROM refs
+        ORDER BY name
+        """,
+        engine=con,
+    )
+    mo.vstack([
+        mo.md(f"Order 400000 at tag `before_march_fix`: **{status_at_tag}**. The table's named references (`main` is the branch every write goes to):"),
+        _df,
+    ])
+    return (status_at_tag,)
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    **The same in SQL.** A query engine does the time lookup itself. DuckDB's
+    `iceberg` extension needs a download, so this step uses **chDB** (ClickHouse
+    running inside Python, module 9), which reads Iceberg with no download. It takes
+    the time in milliseconds since 1970:
+    """)
+    return
+
+
+@app.cell
+def _(WAREHOUSE, chdb, mo, status_at_tag, time_before_write):
+    _ = status_at_tag
+    _table_dir = WAREHOUSE / "sales" / "orders"
+    _ms = int(time_before_write.timestamp() * 1000)
+    _query = f"""
+    SELECT order_id, status
+    FROM icebergLocal('{_table_dir}')
+    WHERE order_id = 400000
+    SETTINGS iceberg_timestamp_ms = {_ms}
+    """
+    status_sql_at_time = chdb.query(_query, "CSV").data().strip().split(",")[1].strip('"')
+    mo.md(f"""
+    ```sql
+    {_query}
+    ```
+
+    Result: order 400000 is **{status_sql_at_time}**.
+
+    The same query in other engines (not run here):
+
+    | Engine | Time travel by time | By tag |
+    |---|---|---|
+    | Trino / Starburst | `FROM orders FOR TIMESTAMP AS OF TIMESTAMP '2025-...'` | `FROM orders FOR VERSION AS OF 'before_march_fix'` |
+    | Spark | `FROM orders TIMESTAMP AS OF '2025-...'` | `FROM orders VERSION AS OF 'before_march_fix'` |
+    | DuckDB (`iceberg` extension, attached catalog) | `FROM orders AT (TIMESTAMP => TIMESTAMP '2025-...')` | not verified yet |
+    """)
+    return (status_sql_at_time,)
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
     ## Step 7: schema evolution, replaying module 1 step 5c
 
     In module 1, adding a `channel` column to new files broke readers. In Iceberg the
@@ -469,13 +591,17 @@ def _(mo):
 
 
 @app.cell
-def _(StringType, WAREHOUSE, mo, orders, status_now):
-    _ = status_now
+def _(StringType, WAREHOUSE, mo, orders, status_sql_at_time):
+    _ = status_sql_at_time
     _data_dir = WAREHOUSE / "sales" / "orders" / "data"
     data_files_before = sorted(p.name for p in _data_dir.rglob("*.parquet"))
 
-    with orders.update_schema() as _update:
-        _update.add_column("channel", StringType())
+    # marimo re-runs this cell whenever a cell above it re-runs. The second time,
+    # the table already has `channel`, and adding it again raises
+    # "Cannot add column, name already exists". So add it only once.
+    if "channel" not in orders.schema().column_names:
+        with orders.update_schema() as _update:
+            _update.add_column("channel", StringType())
 
     data_files_after = sorted(p.name for p in _data_dir.rglob("*.parquet"))
     mo.md(f"""
@@ -550,22 +676,23 @@ def _(mo):
 @app.cell
 def _(DayTransform, WAREHOUSE, con, exercise1_files, mo, orders):
     _ = exercise1_files  # run after exercise 1
-    with orders.update_spec() as _spec:
-        _spec.add_field("order_ts", DayTransform(), "order_ts_day")
-        _spec.remove_field("order_ts_month")
-
-    _new_day = con.sql("""
-        SELECT
-            2_000_000 + i                                                   AS order_id,
-            TIMESTAMP '2026-01-01' + to_seconds(i * 15)                     AS order_ts,
-            (hash(i) % 50_000)::INT                                         AS customer_id,
-            ['EMEA','NA','LATAM','APAC','ANZ'][(hash(i * 7) % 5)::INT + 1]  AS region,
-            round(((hash(i * 13) % 100_000) / 100.0), 2)                    AS amount,
-            'NEW'                                                           AS status,
-            'web'                                                           AS channel
-        FROM range(5_000) t(i)
-    """).to_arrow_table()
-    orders.append(_new_day)
+    # Only once: on a re-run the spec is already by day, and removing order_ts_month again fails.
+    if "order_ts_day" not in [_f.name for _f in orders.spec().fields]:
+        with orders.update_spec() as _spec:
+            _spec.add_field("order_ts", DayTransform(), "order_ts_day")
+            _spec.remove_field("order_ts_month")
+        _new_day = con.sql("""
+            SELECT
+                2_000_000 + i                                                   AS order_id,
+                TIMESTAMP '2026-01-01' + to_seconds(i * 15)                     AS order_ts,
+                (hash(i) % 50_000)::INT                                         AS customer_id,
+                ['EMEA','NA','LATAM','APAC','ANZ'][(hash(i * 7) % 5)::INT + 1]  AS region,
+                round(((hash(i * 13) % 100_000) / 100.0), 2)                    AS amount,
+                'NEW'                                                           AS status,
+                'web'                                                           AS channel
+            FROM range(5_000) t(i)
+        """).to_arrow_table()
+        orders.append(_new_day)
 
     _dirs = sorted({p.parent.name for p in (WAREHOUSE / "sales" / "orders" / "data").rglob("*.parquet")})
     _march = len(list(orders.scan(row_filter="order_ts >= '2025-03-01T00:00:00' AND order_ts < '2025-04-01T00:00:00'").plan_files()))
