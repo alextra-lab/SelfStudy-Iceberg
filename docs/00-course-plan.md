@@ -2,14 +2,14 @@
 
 Nine modules, each with a lesson in `docs/` and a runnable lab in `labs/`.
 Everything runs on Python >= 3.13 with `uv`. No Hadoop, no HDFS, no Hive Metastore:
-storage is a local folder first, then MinIO (S3-compatible) in Docker; catalogs are
+storage is a local folder first, then RustFS (S3-compatible) in Docker; catalogs are
 SQLite/Postgres-backed or REST.
 
 | # | Module | You will be able to | Stack |
 |---|--------|---------------------|-------|
 | 1 | Modern data lake basics | Explain object storage + open file formats + table formats + catalogs + engines, and why plain Parquet is not a table | DuckDB, Parquet |
 | 2 | Iceberg basics | Read an Iceberg table's metadata tree (metadata.json, manifest list, manifests, data files), take snapshots, time travel, evolve schema | PyIceberg (SQLite catalog), DuckDB |
-| 3 | Catalog selection | Choose between REST catalogs (Polaris, Lakekeeper, Nessie, Gravitino, Unity), cloud catalogs (Glue, S3 Tables) and JDBC/SQL; know why Hive Metastore is legacy | Docker: MinIO + a REST catalog + Trino |
+| 3 | Catalog selection | Choose between REST catalogs (Polaris, Lakekeeper, Nessie, Gravitino, Unity), cloud catalogs (Glue, S3 Tables) and JDBC/SQL; know why Hive Metastore is legacy | Docker: RustFS (S3) + Apache Polaris (REST catalog) + Trino; PyIceberg |
 | 4 | Best-practice table creation | Pick partition transforms, sort order, target file size, format version (v2 vs v3) and table properties for a workload | Trino/Starburst, PyIceberg |
 | 5 | Best-practice queries | Write queries that prune partitions and files, use metadata tables, avoid small-file and delete-file traps | Trino/Starburst, DuckDB |
 | 6 | Maintenance | Run compaction, expire snapshots, remove orphan files, rewrite manifests; schedule them | Trino `ALTER TABLE ... EXECUTE`, PyIceberg |
@@ -36,5 +36,5 @@ uv run marimo edit labs/01_data_lake/lab.py
 uv run pytest
 ```
 
-Docker is needed from module 3 onward (MinIO, a REST catalog, Trino).
+Docker is needed from module 3 onward (RustFS, Apache Polaris, Trino).
 Starburst Galaxy's free tier is an option for module 4+ if you would rather not run Trino locally.

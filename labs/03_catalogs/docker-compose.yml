@@ -1,0 +1,45 @@
+# Module 3 lab services. Start with:  docker compose -f labs/03_catalogs/docker-compose.yml up -d
+#
+#   rustfs   S3-compatible object storage (the "disk")            http://localhost:9000
+#   polaris  Apache Polaris, an Iceberg REST catalog (the "dictionary")  http://localhost:8181
+#   trino    Trino, a SQL engine that reads and writes Iceberg     http://localhost:8080
+#
+# No Hadoop, no Hive Metastore. Everything is in memory or in a Docker volume,
+# so `docker compose down -v` removes the whole lake.
+name: iceberg-module03
+
+services:
+  rustfs:
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: labadmin
+      RUSTFS_SECRET_KEY: labpassword
+    ports:
+      - "9000:9000"
+    volumes:
+      - lake:/data
+
+  polaris:
+    image: apache/polaris:1.8.0
+    depends_on: [rustfs]
+    environment:
+      # Root login for the lab: realm POLARIS, client id "root", secret "secret".
+      POLARIS_BOOTSTRAP_CREDENTIALS: POLARIS,root,secret
+      polaris.realm-context.realms: POLARIS
+      # Polaris itself reads and writes metadata files on RustFS with these keys.
+      AWS_ACCESS_KEY_ID: labadmin
+      AWS_SECRET_ACCESS_KEY: labpassword
+      AWS_REGION: us-east-1
+    ports:
+      - "8181:8181"
+
+  trino:
+    image: trinodb/trino:483
+    depends_on: [polaris]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog:ro
+
+volumes:
+  lake:

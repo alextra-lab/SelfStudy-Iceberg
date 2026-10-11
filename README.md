@@ -1,7 +1,7 @@
 # SelfStudy-Iceberg
 
 Hands-on self-study of **Apache Iceberg**, queried through **Starburst (Trino)** and **DuckDB**.
-No Hadoop: object storage (local folder, then MinIO), SQL or REST catalogs, Python >= 3.13.
+No Hadoop: object storage (local folder, then RustFS, an S3-compatible server), SQL or REST catalogs, Python >= 3.13.
 
 ## Course
 
@@ -11,7 +11,7 @@ See [docs/00-course-plan.md](docs/00-course-plan.md) for the full plan.
 |---|--------|--------|-----|
 | 1 | Modern data lake basics | [docs/01-modern-data-lake.md](docs/01-modern-data-lake.md) | `labs/01_data_lake/lab.py` |
 | 2 | Iceberg basics | [docs/02-iceberg-basics.md](docs/02-iceberg-basics.md) | `labs/02_iceberg_basics/lab.py` |
-| 3 | Catalog selection | coming | |
+| 3 | Catalog selection | [docs/03-catalog-selection.md](docs/03-catalog-selection.md) | `labs/03_catalogs/lab.py` (needs Docker) |
 | 4 | Best-practice table creation | coming | |
 | 5 | Best-practice queries | coming | |
 | 6 | Maintenance | coming | |
